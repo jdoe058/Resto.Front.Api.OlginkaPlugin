@@ -34,11 +34,11 @@ namespace Resto.Front.Api.OlginkaPlugin
             return sum;
         }
 
-        static private void printCafeSessionResulSum([NotNull] IPrinterRef printer) 
+        static private void printCafeSessionResulSum([NotNull] IPrinterRef printer, string title) 
         {
             decimal sum = Operations.GetOrders().Where(o => o.Status != OrderStatus.Deleted).Sum(o => o.ResultSum + TryGetOrderExternalSum(o.Id));
             
-            Log.Info($"{DateTime.Now:g} Итого наличных: {sum}");
+            Log.Info($"{DateTime.Now:g} {title} Итого наличных: {sum}");
             Operations.AddNotificationMessage($"{DateTime.Now.ToString("g")} Итого наличных: {sum}","Plugin",TimeSpan.FromSeconds(15));
 
             var slip = new Document
@@ -67,11 +67,11 @@ namespace Resto.Front.Api.OlginkaPlugin
         {
             subscriptions = new CompositeDisposable
             {
-                Notifications.CafeSessionOpening.Subscribe(x => printCafeSessionResulSum(Operations.TryGetBillPrinter())),
+                Notifications.CafeSessionOpening.Subscribe(x => printCafeSessionResulSum(Operations.TryGetBillPrinter(), "Открытие смены")),
 
-                Notifications.CafeSessionClosing.Subscribe(x => printCafeSessionResulSum(Operations.TryGetBillPrinter())),
+                Notifications.CafeSessionClosing.Subscribe(x => printCafeSessionResulSum(Operations.TryGetBillPrinter(), "Закрытие смены")),
 
-                Operations.AddButtonToPluginsMenu("Итого нала", x => printCafeSessionResulSum(Operations.TryGetBillPrinter())),
+                Operations.AddButtonToPluginsMenu("Итого нала", x => printCafeSessionResulSum(Operations.TryGetBillPrinter(), "Ручная проверка")),
 
                 Operations.AddButtonToOrderEditScreen("НАЛ", x => {
 
@@ -126,10 +126,9 @@ namespace Resto.Front.Api.OlginkaPlugin
                         editSession.DeleteOrderItem (x.order,item);
                     }
 
-                    Log.Info($"Оплата на сумму: {sum}");
-
+                    Log.Info($"{DateTime.Now:g} Оплата на сумму: {sum}");
+                    
                     sum += TryGetOrderExternalSum(x.order.Id);
-                    Log.Info($"Итого наличных: {sum}");
                     editSession.AddOrderExternalData("sum",sum.ToString(),x.order);
 
                     x.os.SubmitChanges(x.os.GetCredentials(), editSession);
