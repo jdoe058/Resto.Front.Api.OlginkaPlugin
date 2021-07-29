@@ -13,6 +13,7 @@ using System.Xml.Linq;
 using Resto.Front.Api.Data.Orders;
 using Resto.Front.Api.Data.Print;
 using Resto.Front.Api.Data.Payments;
+using Resto.Front.Api.Attributes.JetBrains;
 
 namespace Resto.Front.Api.OlginkaPlugin
 {
@@ -22,10 +23,56 @@ namespace Resto.Front.Api.OlginkaPlugin
     {
         private readonly CompositeDisposable subscriptions;
 
+        static private decimal TryGetOrderExternalSum([NotNull] Guid orderId) {
+            decimal sum = 0;
+
+            if (decimal.TryParse(Operations.TryGetOrderExternalDataByKey(orderId, "sum"), out decimal res))
+            {
+                sum += res;
+            }
+
+            return sum;
+        }
+
+        static private void printCafeSessionResulSum([NotNull] IPrinterRef printer) 
+        {
+            decimal sum = Operations.GetOrders().Where(o => o.Status != OrderStatus.Deleted).Sum(o => o.ResultSum + TryGetOrderExternalSum(o.Id));
+            
+            Log.Info($"{DateTime.Now:g} Итого наличных: {sum}");
+            Operations.AddNotificationMessage($"{DateTime.Now.ToString("g")} Итого наличных: {sum}","Plugin",TimeSpan.FromSeconds(15));
+
+            var slip = new Document
+            {
+                Markup = new XElement(Tags.Doc
+                    , new XElement(Tags.Line, new XAttribute("symbols", "*"))
+                    , new XElement(Tags.Left, string.Format("{0} ----- {1}", "Мой ресторан", "ООО \"Мое торговое предприятие\""))
+                    , new XElement(Tags.Left, "ИНН")
+                    , new XElement(Tags.Line, new XAttribute("symbols", "*"))
+                    , new XElement(Tags.Pair, new XAttribute(Tags.Left, "Касса: 1"), new XAttribute(Tags.Right, "Основная группа"))
+                    , new XElement(Tags.Pair, new XAttribute(Tags.Left, "Кассовая смена:"), new XAttribute(Tags.Right, "1"))
+                    , new XElement(Tags.Center, "Итого наличных")
+                    , new XElement(Tags.Pair, new XAttribute(Tags.Left, "Дата"), new XAttribute(Tags.Right, DateTime.Now.ToString("g")))
+                    , new XElement(Tags.Line)
+                    , new XElement(Tags.Left, sum.ToString())
+                    , new XElement(Tags.Line)
+
+                )
+
+            };
+
+            Operations.Print(printer,slip);
+        }
+
         public PayButton()
         {
             subscriptions = new CompositeDisposable
             {
+                Notifications.CafeSessionOpening.Subscribe(x => printCafeSessionResulSum(Operations.TryGetBillPrinter())),
+
+                Notifications.CafeSessionClosing.Subscribe(x => printCafeSessionResulSum(Operations.TryGetBillPrinter())),
+
+                Operations.AddButtonToPluginsMenu("Итого нала", x => printCafeSessionResulSum(Operations.TryGetBillPrinter())),
+
                 Operations.AddButtonToOrderEditScreen("НАЛ", x => {
 
                     x.os.Print(Operations.TryGetReceiptChequePrinter(), new Document { Markup = new XElement(Tags.Doc
@@ -73,33 +120,20 @@ namespace Resto.Front.Api.OlginkaPlugin
 
                     decimal sum = 0;
 
-                    if (decimal.TryParse(Operations.TryGetOrderExternalDataByKey(x.order.Id,"sum"), out decimal res)) {
-                        sum += res;
-                    }
-
                     foreach (var item in x.order.Items.OfType<IOrderProductItem>().Where(i => !i.PrintTime.HasValue && !i.Deleted) ) 
                     {
                         sum += item.ResultSum;
                         editSession.DeleteOrderItem (x.order,item);
                     }
 
+                    Log.Info($"Оплата на сумму: {sum}");
+
+                    sum += TryGetOrderExternalSum(x.order.Id);
+                    Log.Info($"Итого наличных: {sum}");
                     editSession.AddOrderExternalData("sum",sum.ToString(),x.order);
+
                     x.os.SubmitChanges(x.os.GetCredentials(), editSession);
-
-                    
                 }),
-
-                Operations.AddButtonToPluginsMenu("Итого нала", x => {
-                    decimal sum = 0;
-                    foreach ( var order in Operations.GetOrders().Where(o => o.Status != OrderStatus.Deleted))
-                    {
-                        sum += order.ResultSum;
-                        if (decimal.TryParse(Operations.TryGetOrderExternalDataByKey(order.Id,"sum"), out decimal res))
-                            sum += res;
-                    }
-                        
-                    x.vm.ShowClosePopup("Итого наличными", sum.ToString());
-                })
             };
         }
 
