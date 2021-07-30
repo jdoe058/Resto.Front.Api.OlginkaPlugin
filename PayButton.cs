@@ -36,10 +36,11 @@ namespace Resto.Front.Api.OlginkaPlugin
 
         static private void printCafeSessionResulSum([NotNull] IPrinterRef printer, string title) 
         {
+            decimal sum1 = Operations.GetOrders().Where(o => o.Status != OrderStatus.Deleted).Sum(o => TryGetOrderExternalSum(o.Id));
             decimal sum = Operations.GetOrders().Where(o => o.Status != OrderStatus.Deleted).Sum(o => o.ResultSum + TryGetOrderExternalSum(o.Id));
             
-            Log.Info($"{DateTime.Now:g} {title} Итого наличных: {sum}");
-            Operations.AddNotificationMessage($"{DateTime.Now.ToString("g")} Итого наличных: {sum}","Plugin",TimeSpan.FromSeconds(15));
+            Log.Info($"{DateTime.Now:g} {title} Итого : {sum1} из {sum}");
+            Operations.AddNotificationMessage($"{DateTime.Now.ToString("g")} Итого : {sum1} из {sum}","Plugin",TimeSpan.FromSeconds(15));
 
             var slip = new Document
             {
@@ -53,7 +54,7 @@ namespace Resto.Front.Api.OlginkaPlugin
                     , new XElement(Tags.Center, "Итого наличных")
                     , new XElement(Tags.Pair, new XAttribute(Tags.Left, "Дата"), new XAttribute(Tags.Right, DateTime.Now.ToString("g")))
                     , new XElement(Tags.Line)
-                    , new XElement(Tags.Left, sum.ToString())
+                    , new XElement(Tags.Left, $"{sum1} из {sum}")
                     , new XElement(Tags.Line)
 
                 )
